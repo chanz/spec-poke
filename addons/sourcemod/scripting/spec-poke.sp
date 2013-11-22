@@ -51,7 +51,7 @@ public Plugin:myinfo = {
 	name 						= "Spec Poke",
 	author 						= "BCServ",
 	description 				= "Pokes spectators with a hud menu, when they are afk for a given time",
-	version 					= "1.0",
+	version 					= "1.1",
 	url 						= "http://bcserv.eu/"
 }
 
@@ -84,6 +84,7 @@ new Handle:g_cvarNextTimeout = INVALID_HANDLE;
 new Handle:g_cvarCountDown = INVALID_HANDLE;
 new Handle:g_cvarDetect_Mouse = INVALID_HANDLE;
 new Handle:g_cvarDetect_Buttons = INVALID_HANDLE;
+new Handle:g_cvarMenuRequiresAction = INVALID_HANDLE;
 
 // Console Variables: Runtime Optimizers
 new g_iPlugin_Enable = 1;
@@ -92,6 +93,7 @@ new g_iPlugin_NextTimeout = 300;
 new g_iPlugin_CountDown = 30;
 new bool:g_bPlugin_Detect_Mouse = true;
 new bool:g_bPlugin_Detect_Buttons = true;
+new bool:g_bPlugin_MenuRequiresAction = true;
 
 // Timers
 
@@ -107,6 +109,7 @@ new bool:g_bPlugin_Detect_Buttons = true;
 
 // Client Variables
 new g_iClient_Timeout[MAXPLAYERS+1];
+new g_bClient_IsMenuOpen[MAXPLAYERS+1];
 
 // M i s c
 
@@ -143,7 +146,8 @@ public OnPluginStart()
 	g_cvarCountDown = PluginManager_CreateConVar("countdown", "30", "How long should the player be poked until he is kicked.");
 	g_cvarDetect_Mouse = PluginManager_CreateConVar("detect_mouse", "1", "Detect mouse movement and accept this as sign that the player is still behind the screen.");
 	g_cvarDetect_Buttons = PluginManager_CreateConVar("detect_buttons", "1", "Detect button presses and accept this as sign that the player is still behind the screen.");
-	
+	g_cvarMenuRequiresAction = PluginManager_CreateConVar("menurequiresaction", "1", "Once the menu appears the count down can only be halted by pressing the menu key 1.\nSo this disables the mouse and button detection once the menu shows up.");
+
 	// Hook ConVar Change
 	HookConVarChange(g_cvarEnable, ConVarChange_Enable);
 	HookConVarChange(g_cvarTimeout, ConVarChange_Timeout);
@@ -151,7 +155,7 @@ public OnPluginStart()
 	HookConVarChange(g_cvarCountDown, ConVarChange_CountDown);
 	HookConVarChange(g_cvarDetect_Mouse, ConVarChange_Detect_Mouse);
 	HookConVarChange(g_cvarDetect_Buttons, ConVarChange_Detect_Buttons);
-	
+	HookConVarChange(g_cvarMenuRequiresAction, ConVarChange_MenuRequiresAction);
 	
 	// Event Hooks
 	
@@ -187,6 +191,7 @@ public OnConfigsExecuted()
 	g_iPlugin_CountDown = GetConVarInt(g_cvarCountDown);
 	g_bPlugin_Detect_Mouse = GetConVarBool(g_cvarDetect_Mouse);
 	g_bPlugin_Detect_Buttons = GetConVarBool(g_cvarDetect_Buttons);
+	g_bPlugin_MenuRequiresAction = GetConVarBool(g_cvarMenuRequiresAction);
 	
 	// Mind: this is only here for late load, since on map change or server start, there isn't any client.
 	// Remove it if you don't need it.
@@ -213,16 +218,20 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 		return Plugin_Continue;
 	}
 
-	if (g_bPlugin_Detect_Mouse && (mouse[0] != 0 || mouse[1] != 0)) {
+	if (!g_bPlugin_MenuRequiresAction || (g_bPlugin_MenuRequiresAction && !g_bClient_IsMenuOpen[client])) {
 
-		g_iClient_Timeout[client] = g_iPlugin_Timeout;
-		return Plugin_Continue;
-	}
+		if (g_bPlugin_Detect_Mouse && (mouse[0] != 0 || mouse[1] != 0)) {
 
-	if (g_bPlugin_Detect_Buttons && buttons != 0) {
+			g_iClient_Timeout[client] = g_iPlugin_Timeout;
+			return Plugin_Continue;
+		}
 
-		g_iClient_Timeout[client] = g_iPlugin_Timeout;
-		return Plugin_Continue;
+		if (g_bPlugin_Detect_Buttons && buttons != 0) {
+
+			g_iClient_Timeout[client] = g_iPlugin_Timeout;
+			return Plugin_Continue;
+		}
+
 	}
 
 	return Plugin_Continue;
@@ -300,6 +309,10 @@ public ConVarChange_Detect_Buttons(Handle:cvar, const String:oldVal[], const Str
 {
 	g_bPlugin_Detect_Buttons = bool:StringToInt(newVal);
 }
+public ConVarChange_MenuRequiresAction(Handle:cvar, const String:oldVal[], const String:newVal[])
+{
+	g_bPlugin_MenuRequiresAction = bool:StringToInt(newVal);
+}
 
 /**************************************************************************************
 
@@ -337,6 +350,8 @@ public Action:Event_Example(Handle:event, const String:name[], bool:dontBroadcas
 ***************************************************************************************/
 stock ShowPokeMenu(client){
 
+	g_bClient_IsMenuOpen[client] = true;
+
 	new Handle:menu = CreateMenu(MenuHandler_ShowPokeMenu);
 	
 	new String:title[128];
@@ -358,6 +373,7 @@ public MenuHandler_ShowPokeMenu(Handle:menu, MenuAction:action, param1, param2){
 		if(GetMenuItem(menu, param2, preference, sizeof(preference))){
 
 			g_iClient_Timeout[client] = g_iPlugin_NextTimeout;
+			g_bClient_IsMenuOpen[client] = false;
 		}
 	}
 	else if (action == MenuAction_End) {
@@ -399,6 +415,7 @@ stock Client_InitializeVariables(client)
 {
 	// Client Variables
 	g_iClient_Timeout[client] = g_iPlugin_Timeout;
+	g_bClient_IsMenuOpen[client] = false;
 }
 
 
